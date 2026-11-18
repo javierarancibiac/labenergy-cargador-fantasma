@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="es-CL" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LabEnergy - El Cargador Fantasma</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js para gráficos interactivos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#151e32',
+                            900: '#0f172a',
+                            950: '#090d16',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #090d16;
+            color: #f8fafc;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Ocultar scrollbar en contenedores horizontales */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Estilo personalizado para sliders */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #10b981;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #1e293b;
+            border-radius: 999px;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.05); }
+        }
+        .animate-pulse-glow {
+            animation: pulse-glow 2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex justify-center">
+
+    <!-- Contenedor tipo App Móvil (centrado en desktop, 100% en móvil) -->
+    <div class="w-full max-w-md bg-slate-900 min-h-screen flex flex-col relative shadow-2xl border-x border-slate-800/60 pb-24">
+        
+        <!-- Header Superior Fijo -->
+        <header class="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-5 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                    <i data-lucide="zap" class="w-5 h-5 text-slate-950 fill-slate-950"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-base tracking-tight text-white leading-none">LabEnergy</h1>
+                    <span class="text-[11px] font-medium text-emerald-400 tracking-wide">EL CARGADOR FANTASMA</span>
+                </div>
+            </div>
+            
+            <!-- Badge estado ESP32 + Config Tarifa -->
+            <button onclick="openTariffModal()" class="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-750 border border-slate-700/80 px-3 py-1.5 rounded-full text-xs font-medium text-slate-300 transition active:scale-95">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span id="header-tariff">$195/kWh</span>
+                <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5 text-slate-400 ml-0.5"></i>
+            </button>
+        </header>
+
+        <!-- Notificación Toast Flotante -->
+        <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 font-semibold text-xs px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2 transition-all duration-300 opacity-0 pointer-events-none translate-y-[-10px]">
+            <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+            <span id="toast-msg">Dispositivo agregado</span>
+        </div>
+
+        <!-- ==================== VISTA 1: INICIO (DASHBOARD) ==================== -->
+        <main id="view-dashboard" class="flex-1 px-5 pt-5 space-y-5">
+            
+            <!-- Tarjeta Principal: Pérdida Mensual -->
+            <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-800 via-slate-850 to-slate-900 border border-slate-700/70 p-5 shadow-xl">
+                <div class="absolute -right-6 -top-6 w-32 h-32 bg-rose-500/10 rounded-full blur-2xl"></div>
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
+                        <i data-lucide="ghost" class="w-4 h-4"></i> Gasto Vampiro Mensual
+                    </span>
+                    <span id="active-devices-badge" class="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-0.5 rounded-full border border-slate-700">
+                        5 activos
+                    </span>
+                </div>
+                
+                <div class="my-2">
+                    <div class="flex items-baseline gap-1">
+                        <span id="dash-monthly-clp" class="text-4xl font-extrabold tracking-tight text-white">$0</span>
+                        <span class="text-xs font-medium text-slate-400">CLP / mes</span>
+                    </div>
+                    <p class="text-xs text-slate-400 mt-1">
+                        Equivale a <span id="dash-annual-clp" class="text-rose-400 font-semibold">$0 CLP</span> botados al año en modo espera.
+                    </p>
+                </div>
+
+                <!-- Barra de Impacto Estimado en Cuenta de Luz -->
+                <div class="mt-4 pt-3.5 border-t border-slate-700/60">
+                    <div class="flex justify-between text-xs mb-1.5">
+                        <span class="text-slate-400">Impacto en cuenta de luz depto</span>
+                        <span id="dash-bill-percent" class="font-bold text-amber-400">~7.4%</span>
+                    </div>
+                    <div class="w-full bg-slate-950 h-2 rounded-full overflow-hidden">
+                        <div id="dash-bill-bar" class="bg-gradient-to-r from-amber-500 to-rose-500 h-full rounded-full transition-all duration-500" style="width: 74%"></div>
+                    </div>
+                    <p class="text-[10px] text-slate-500 mt-1.5">Ref. científica: Consumo fantasma representa 5%–10% del hogar.</p>
+                </div>
+            </div>
+
+            <!-- Métricas Rápidas en Grid -->
+            <div class="grid grid-cols-2 gap-3.5">
+                <div class="bg-slate-800/60 border border-slate-800 rounded-2xl p-4">
+                    <div class="flex items-center gap-2 text-slate-400 text-xs mb-1">
+                        <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+                        <span>Potencia Fantasma</span>
+                    </div>
+                    <div class="text-2xl font-bold text-white"><span id="dash-total-watts">0.0</span> <span class="text-sm font-normal text-slate-400">W</span></div>
+                    <div class="text-[11px] text-emerald-400 mt-0.5" id="dash-kwh-month">0.0 kWh/mes</div>
+                </div>
+
+                <div class="bg-slate-800/60 border border-slate-800 rounded-2xl p-4">
+                    <div class="flex items-center gap-2 text-slate-400 text-xs mb-1">
+                        <i data-lucide="piggy-bank" class="w-4 h-4 text-sky-400"></i>
+                        <span>Ahorro Simulado</span>
+                    </div>
+                    <div class="text-2xl font-bold text-sky-400" id="dash-saved-clp">$0</div>
+                    <div class="text-[11px] text-slate-400 mt-0.5">Al desenchufar equipos</div>
+                </div>
+            </div>
+
+            <!-- Gráfico de Distribución por Dispositivo -->
+            <div class="bg-slate-800/60 border border-slate-800 rounded-3xl p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-sm font-semibold text-white">¿Qué aparato te roba más plata?</h2>
+                    <span class="text-[11px] text-slate-400">CLP / mes</span>
+                </div>
+                <div class="relative h-48 w-full flex items-center justify-center">
+                    <canvas id="dashboardChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Botón CTA Principal -->
+            <button onclick="switchTab('live')" class="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition active:scale-[0.98]">
+                <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                <span>Medir Nuevo Dispositivo en Vivo</span>
+            </button>
+        </main>
+
+        <!-- ==================== VISTA 2: MEDIR EN VIVO (SENSOR ESP32) ==================== -->
+        <main id="view-live" class="hidden flex-1 px-5 pt-5 space-y-5">
+            
+            <!-- Header de Telemetría Hardware -->
+            <div class="flex items-center justify-between bg-slate-800/80 border border-slate-700/70 rounded-2xl px-4 py-3">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                        <i data-lucide="cpu" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-bold text-white">ESP32 + PZEM-004T</div>
+                        <div class="text-[11px] text-slate-400">Muestreo AC 220V • 50Hz (Chile)</div>
+                    </div>
+                </div>
+                <span id="sensor-status-pill" class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                    Vampiro Activo
+                </span>
+            </div>
+
+            <!-- Selector de Dispositivo de Prueba para Demo -->
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-2">Selecciona aparato conectado al sensor:</label>
+                <div class="grid grid-cols-2 gap-2" id="preset-buttons">
+                    <!-- Se llena dinámicamente con JS -->
+                </div>
+            </div>
+
+            <!-- Input Manual si elige modo personalizado -->
+            <div id="custom-watts-box" class="hidden bg-slate-800/70 border border-slate-700 rounded-2xl p-3.5 space-y-2">
+                <div class="grid grid-cols-2 gap-2.5">
+                    <div>
+                        <label class="text-[11px] text-slate-400 block mb-1">Nombre aparato</label>
+                        <input type="text" id="custom-name-input" value="Monitor Externo" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-slate-400 block mb-1">Potencia en espera (W)</label>
+                        <input type="number" id="custom-watts-input" value="4.5" step="0.1" min="0" max="500" oninput="updateCustomWatts(this.value)" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visor Osciloscopio / Lectura en Vivo -->
+            <div class="relative rounded-3xl bg-slate-950 border border-slate-800 p-5 text-center shadow-inner">
+                <div class="flex justify-between items-center text-[11px] text-slate-500 mb-3">
+                    <span>LECTURA EN TIEMPO REAL</span>
+                    <span class="font-mono text-emerald-400" id="live-voltage">221.4 V</span>
+                </div>
+
+                <!-- Valor Central en Watts -->
+                <div class="my-2 flex flex-col items-center">
+                    <div id="live-watts-display" class="text-5xl font-black tracking-tight text-rose-400 font-mono transition-colors">
+                        8.4 <span class="text-xl font-sans font-semibold text-slate-400">W</span>
+                    </div>
+                    <div class="mt-2 flex items-center gap-4 text-xs text-slate-400 font-mono">
+                        <span>Corriente: <strong id="live-amps" class="text-slate-200">0.038 A</strong></span>
+                        <span>•</span>
+                        <span>FP: <strong id="live-pf" class="text-slate-200">0.62</strong></span>
+                    </div>
+                </div>
+
+                <!-- Botón Simulador de Desenchufar (Clave para la presentación en vivo) -->
+                <div class="mt-4 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-3">
+                    <button id="toggle-plug-btn" onclick="togglePlugSimulation()" class="flex-1 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-semibold text-white flex items-center justify-center gap-2 transition">
+                        <i data-lucide="plug-zap" class="w-4 h-4 text-amber-400"></i>
+                        <span id="toggle-plug-text">Simular Desenchufar</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Configuración de Horas y Cálculo Proyectado -->
+            <div class="bg-slate-800/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-medium text-slate-300">Horas al día en modo espera:</span>
+                    <span class="text-sm font-bold text-emerald-400"><span id="live-hours-val">18</span> hrs/día</span>
+                </div>
+                <input type="range" id="live-hours-slider" min="1" max="24" value="18" oninput="updateLiveProjection()" class="w-full">
+                
+                <div class="pt-2 flex items-center justify-between border-t border-slate-700/60">
+                    <span class="text-xs text-slate-400">Costo fantasma proyectado:</span>
+                    <div class="text-right">
+                        <span id="live-projected-clp" class="text-lg font-extrabold text-rose-400">$885</span>
+                        <span class="text-[11px] text-slate-400"> CLP/mes</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Botón Agregar al Inventario -->
+            <button onclick="addCurrentLiveDevice()" class="w-full py-3.5 px-5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition active:scale-[0.98]">
+                <i data-lucide="plus" class="w-5 h-5"></i>
+                <span>Agregar a "Mi Depto"</span>
+            </button>
+        </main>
+
+        <!-- ==================== VISTA 3: MI DEPTO (INVENTARIO Y SIMULADOR) ==================== -->
+        <main id="view-inventory" class="hidden flex-1 px-5 pt-5 space-y-4">
+            
+            <!-- Banner de Ahorro Simulado -->
+            <div class="rounded-2xl bg-gradient-to-r from-emerald-950 to-teal-950 border border-emerald-500/40 p-4 flex items-center justify-between">
+                <div>
+                    <div class="text-[11px] font-semibold uppercase tracking-wider text-emerald-400">Ahorro al apagar inactivos</div>
+                    <div class="text-2xl font-extrabold text-white mt-0.5"><span id="inv-saved-monthly">$0</span> <span class="text-xs font-normal text-emerald-300">CLP/mes</span></div>
+                    <div class="text-[11px] text-emerald-300/80">Son <strong id="inv-saved-annual">$0</strong> CLP al año en tu bolsillo</div>
+                </div>
+                <div class="w-11 h-11 rounded-2xl bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <i data-lucide="leaf" class="w-6 h-6"></i>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between">
+                <h2 class="text-sm font-bold text-white">Dispositivos en tu Depto</h2>
+                <span class="text-[11px] text-slate-400">Apaga para simular ahorro</span>
+            </div>
+
+            <!-- Lista de Tarjetas de Dispositivos -->
+            <div id="inventory-list" class="space-y-3">
+                <!-- Renderizado dinámicamente -->
+            </div>
+        </main>
+
+        <!-- ==================== VISTA 4: VALIDACIÓN CIENTÍFICA ==================== -->
+        <main id="view-validation" class="hidden flex-1 px-5 pt-5 space-y-5">
+            
+            <div>
+                <h2 class="text-base font-bold text-white">Validación Experimental</h2>
+                <p class="text-xs text-slate-400 mt-1">Contrastación de nuestro prototipo (ESP32 + PZEM-004T) frente a un medidor comercial certificado (<strong class="text-slate-200">Kill A Watt P4400</strong>).</p>
+            </div>
+
+            <!-- Tarjeta Resumen Precisión -->
+            <div class="grid grid-cols-2 gap-3">
+                <div class="bg-slate-800/70 border border-slate-700/70 rounded-2xl p-3.5">
+                    <span class="text-[11px] text-slate-400">Error Relativo Medio</span>
+                    <div class="text-2xl font-extrabold text-emerald-400 mt-0.5">1.84%</div>
+                    <span class="text-[10px] text-slate-400">Aceptable (&lt; 3.0% meta)</span>
+                </div>
+                <div class="bg-slate-800/70 border border-slate-700/70 rounded-2xl p-3.5">
+                    <span class="text-[11px] text-slate-400">Correlación (R²)</span>
+                    <div class="text-2xl font-extrabold text-sky-400 mt-0.5">0.998</div>
+                    <span class="text-[10px] text-slate-400">Alta linealidad en AC</span>
+                </div>
+            </div>
+
+            <!-- Gráfico Comparativo -->
+            <div class="bg-slate-800/60 border border-slate-800 rounded-3xl p-4">
+                <h3 class="text-xs font-semibold text-slate-300 mb-3">Prototipo LabEnergy vs. Kill A Watt (Watts)</h3>
+                <div class="h-44 w-full">
+                    <canvas id="validationChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Tabla de Calibración -->
+            <div class="bg-slate-800/60 border border-slate-800 rounded-2xl overflow-hidden">
+                <table class="w-full text-left text-xs">
+                    <thead class="bg-slate-800 text-slate-300 border-b border-slate-700">
+                        <tr>
+                            <th class="py-2.5 px-3 font-semibold">Dispositivo</th>
+                            <th class="py-2.5 px-2 font-semibold text-right">Prototipo</th>
+                            <th class="py-2.5 px-2 font-semibold text-right">Kill A Watt</th>
+                            <th class="py-2.5 px-3 font-semibold text-right">Error</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800 text-slate-300">
+                        <tr>
+                            <td class="py-2.5 px-3 font-medium">Router Wi-Fi</td>
+                            <td class="py-2.5 px-2 text-right font-mono">11.2 W</td>
+                            <td class="py-2.5 px-2 text-right font-mono">11.0 W</td>
+                            <td class="py-2.5 px-3 text-right text-emerald-400 font-semibold">1.8%</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2.5 px-3 font-medium">Cargador Notebook</td>
+                            <td class="py-2.5 px-2 text-right font-mono">3.4 W</td>
+                            <td class="py-2.5 px-2 text-right font-mono">3.5 W</td>
+                            <td class="py-2.5 px-3 text-right text-emerald-400 font-semibold">2.8%</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2.5 px-3 font-medium">Consola Reposo</td>
+                            <td class="py-2.5 px-2 text-right font-mono">9.8 W</td>
+                            <td class="py-2.5 px-2 text-right font-mono">9.7 W</td>
+                            <td class="py-2.5 px-3 text-right text-emerald-400 font-semibold">1.0%</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2.5 px-3 font-medium">Smart TV Stand-by</td>
+                            <td class="py-2.5 px-2 text-right font-mono">5.1 W</td>
+                            <td class="py-2.5 px-2 text-right font-mono">5.0 W</td>
+                            <td class="py-2.5 px-3 text-right text-emerald-400 font-semibold">2.0%</td>
+                        </tr>
+                        <tr>
+                            <td class="py-2.5 px-3 font-medium">Cargador Celular</td>
+                            <td class="py-2.5 px-2 text-right font-mono">0.6 W</td>
+                            <td class="py-2.5 px-2 text-right font-mono">0.6 W</td>
+                            <td class="py-2.5 px-3 text-right text-emerald-400 font-semibold">0.0%</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Modelo Matemático -->
+            <div class="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-2">
+                <div class="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                    <i data-lucide="calculator" class="w-4 h-4"></i>
+                    <span>Motor de Cálculo Tarifario</span>
+                </div>
+                <p class="text-[11px] text-slate-400 leading-relaxed">
+                    Convertimos la potencia activa medida ($P$ en Watts) a energía mensual proyectada y costo en pesos chilenos según pliego tarifario BT1:
+                </p>
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 font-mono text-[11px] text-center text-slate-200">
+                    Costo = (Watts / 1000) × Horas/día × 30 × Tarifa
+                </div>
+            </div>
+        </main>
+
+        <!-- ==================== BARRA DE NAVEGACIÓN INFERIOR (TAB BAR) ==================== -->
+        <nav class="fixed bottom-0 w-full max-w-md bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 px-2 py-2 flex justify-around items-center z-40">
+            <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-emerald-400 transition">
+                <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                <span class="text-[10px] font-semibold">Inicio</span>
+            </button>
+            
+            <button onclick="switchTab('live')" id="nav-live" class="nav-btn flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-slate-400 hover:text-slate-200 transition">
+                <i data-lucide="radio" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Medir Vivo</span>
+            </button>
+            
+            <button onclick="switchTab('inventory')" id="nav-inventory" class="nav-btn flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-slate-400 hover:text-slate-200 transition">
+                <i data-lucide="home" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Mi Depto</span>
+            </button>
+            
+            <button onclick="switchTab('validation')" id="nav-validation" class="nav-btn flex flex-col items-center gap-1 py-1 px-3 rounded-xl text-slate-400 hover:text-slate-200 transition">
+                <i data-lucide="flask-conical" class="w-5 h-5"></i>
+                <span class="text-[10px] font-medium">Validación</span>
+            </button>
+        </nav>
+
+        <!-- ==================== MODAL CONFIGURACIÓN DE TARIFA ==================== -->
+        <div id="tariff-modal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-5">
+            <div class="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-sm p-5 shadow-2xl space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="font-bold text-base text-white">Tarifa Eléctrica (CLP/kWh)</h3>
+                    <button onclick="closeTariffModal()" class="text-slate-400 hover:text-white p-1">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <p class="text-xs text-slate-400">
+                    Ajusta el valor del kWh según tu boleta de luz (Enel / CGE promedio residencial en Chile: $180 – $220 CLP).
+                </p>
+                <div>
+                    <label class="text-xs font-medium text-slate-300 block mb-1.5">Valor kWh en Pesos Chilenos ($)</label>
+                    <input type="number" id="tariff-input" value="195" min="50" max="1000" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-lg font-bold text-emerald-400 focus:outline-none focus:border-emerald-500">
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="setQuickTariff(185)" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs text-slate-300">$185 (Santiago)</button>
+                    <button onclick="setQuickTariff(210)" class="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs text-slate-300">$210 (Regiones)</button>
+                </div>
+                <button onclick="saveTariff()" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition">
+                    Guardar Tarifa
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ==================== ESTADO DE LA APLICACIÓN ====================
+        let tariffCLP = 195; // Pesos chilenos por kWh
+        let averageMonthlyBillCLP = 28000; // Cuenta promedio depto universitario para calcular % impacto
+
+        // Inventario inicial precargado (caso realista estudiante universitario)
+        let devices = [
+            { id: 1, name: "Router Wi-Fi Fibra", watts: 11.2, hours: 24, active: true, icon: "wifi" },
+            { id: 2, name: "Consola PS5 / Xbox (Reposo)", watts: 9.8, hours: 20, active: true, icon: "gamepad-2" },
+            { id: 3, name: "Smart TV 50\" Stand-by", watts: 5.1, hours: 19, active: true, icon: "tv" },
+            { id: 4, name: "Cargador Notebook (sin PC)", watts: 3.4, hours: 16, active: true, icon: "laptop" },
+            { id: 5, name: "Cargador Celular enchufado", watts: 0.6, hours: 18, active: true, icon: "smartphone" }
+        ];
+
+        // Presets para el simulador de sensor en vivo (ESP32 + PZEM-004T)
+        const sensorPresets = [
+            { id: 'laptop_charger', name: 'Cargador Notebook', baseWatts: 3.4, pf: 0.58, icon: 'laptop' },
+            { id: 'router', name: 'Router Wi-Fi', baseWatts: 11.2, pf: 0.72, icon: 'wifi' },
+            { id: 'console', name: 'Consola en Reposo', baseWatts: 9.8, pf: 0.65, icon: 'gamepad-2' },
+            { id: 'tv', name: 'Smart TV Stand-by', baseWatts: 5.1, pf: 0.60, icon: 'tv' },
+            { id: 'phone_charger', name: 'Cargador Celular', baseWatts: 0.6, pf: 0.45, icon: 'smartphone' },
+            { id: 'custom', name: 'Manual / Otro', baseWatts: 4.5, pf: 0.62, icon: 'sliders' }
+        ];
+
+        let selectedPreset = sensorPresets[0];
+        let isPluggedIn = true;
+        let currentLiveWatts = selectedPreset.baseWatts;
+        let dashboardChartInstance = null;
+        let validationChartInstance = null;
+
+        // ==================== FORMATEADORES Y CÁLCULOS ====================
+        function formatCLP(amount) {
+            return '$' + Math.round(amount).toLocaleString('es-CL');
+        }
+
+        // Fórmula oficial: (Watts / 1000) * Horas/día * 30 días * Tarifa CLP
+        function calculateMonthlyCost(watts, hours) {
+            const kwhMonth = (watts / 1000) * hours * 30;
+            return kwhMonth * tariffCLP;
+        }
+
+        // ==================== NAVEGACIÓN ENTRE PESTAÑAS ====================
+        function switchTab(tabName) {
+            const views = ['dashboard', 'live', 'inventory', 'validation'];
+            views.forEach(v => {
+                document.getElementById(`view-${v}`).classList.add('hidden');
+                const btn = document.getElementById(`nav-${v}`);
+                btn.classList.remove('text-emerald-400');
+                btn.classList.add('text-slate-400');
+            });
+
+            document.getElementById(`view-${tabName}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`nav-${tabName}`);
+            activeBtn.classList.remove('text-slate-400');
+            activeBtn.classList.add('text-emerald-400');
+
+            if (tabName === 'dashboard') updateDashboard();
+            if (tabName === 'inventory') renderInventory();
+            if (tabName === 'validation') renderValidationChart();
+        }
+
+        // ==================== VISTA 1: DASHBOARD ====================
+        function updateDashboard() {
+            let totalMonthlyCLP = 0;
+            let totalActiveWatts = 0;
+            let totalKwhMonth = 0;
+            let savedMonthlyCLP = 0;
+            let activeCount = 0;
+
+            devices.forEach(dev => {
+                const cost = calculateMonthlyCost(dev.watts, dev.hours);
+                if (dev.active) {
+                    totalMonthlyCLP += cost;
+                    totalActiveWatts += dev.watts;
+                    totalKwhMonth += (dev.watts / 1000) * dev.hours * 30;
+                    activeCount++;
+                } else {
+                    savedMonthlyCLP += cost;
+                }
+            });
+
+            const totalAnnualCLP = totalMonthlyCLP * 12;
+            const billPercentage = Math.min(100, ((totalMonthlyCLP / averageMonthlyBillCLP) * 100));
+
+            document.getElementById('dash-monthly-clp').textContent = formatCLP(totalMonthlyCLP);
+            document.getElementById('dash-annual-clp').textContent = formatCLP(totalAnnualCLP) + ' CLP';
+            document.getElementById('dash-total-watts').textContent = totalActiveWatts.toFixed(1);
+            document.getElementById('dash-kwh-month').textContent = `${totalKwhMonth.toFixed(1)} kWh/mes`;
+            document.getElementById('dash-saved-clp').textContent = formatCLP(savedMonthlyCLP);
+            document.getElementById('active-devices-badge').textContent = `${activeCount} activos`;
+
+            document.getElementById('dash-bill-percent').textContent = `~${billPercentage.toFixed(1)}%`;
+            // Escalamos barra visualmente (donde 15% de la cuenta llena la barra de alerta)
+            const barWidth = Math.min(100, (billPercentage / 15) * 100);
+            document.getElementById('dash-bill-bar').style.width = `${barWidth}%`;
+
+            renderDashboardChart();
+        }
+
+        function renderDashboardChart() {
+            const ctx = document.getElementById('dashboardChart').getContext('2d');
+            const activeDevices = devices.filter(d => d.active);
+            
+            const labels = activeDevices.map(d => d.name.split(' ')[0] + ' ' + (d.name.split(' ')[1] || ''));
+            const dataValues = activeDevices.map(d => Math.round(calculateMonthlyCost(d.watts, d.hours)));
+
+            if (dashboardChartInstance) {
+                dashboardChartInstance.destroy();
+            }
+
+            dashboardChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels.length ? labels : ['Sin consumo activo'],
+                    datasets: [{
+                        data: dataValues.length ? dataValues : [1],
+                        backgroundColor: dataValues.length 
+                            ? ['#f43f5e', '#f59e0b', '#8b5cf6', '#06b6d4', '#10b981', '#ec4899']
+                            : ['#1e293b'],
+                        borderWidth: 2,
+                        borderColor: '#0f172a',
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '68%',
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: '#cbd5e1',
+                                font: { size: 11, family: 'Inter' },
+                                boxWidth: 10,
+                                padding: 10
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (!dataValues.length) return ' $0 CLP';
+                                    return ' ' + formatCLP(context.raw) + ' CLP/mes';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ==================== VISTA 2: SENSOR EN VIVO (ESP32) ====================
+        function initPresetButtons() {
+            const container = document.getElementById('preset-buttons');
+            container.innerHTML = sensorPresets.map(preset => `
+                <button onclick="selectPreset('${preset.id}')" id="preset-btn-${preset.id}" 
+                    class="preset-btn flex items-center gap-2 p-2.5 rounded-xl border text-left transition ${preset.id === selectedPreset.id ? 'bg-emerald-500/15 border-emerald-500 text-white' : 'bg-slate-800/60 border-slate-800 text-slate-300 hover:bg-slate-800'}">
+                    <i data-lucide="${preset.icon}" class="w-4 h-4 text-emerald-400 shrink-0"></i>
+                    <div class="truncate">
+                        <div class="text-xs font-semibold truncate">${preset.name}</div>
+                        <div class="text-[10px] text-slate-400">${preset.id === 'custom' ? 'Ingresar W' : preset.baseWatts + ' W'}</div>
+                    </div>
+                </button>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function selectPreset(id) {
+            selectedPreset = sensorPresets.find(p => p.id === id);
+            isPluggedIn = true;
+            updatePlugButtonUI();
+
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.classList.remove('bg-emerald-500/15', 'border-emerald-500', 'text-white');
+                btn.classList.add('bg-slate-800/60', 'border-slate-800', 'text-slate-300');
+            });
+            const activeBtn = document.getElementById(`preset-btn-${id}`);
+            activeBtn.classList.remove('bg-slate-800/60', 'border-slate-800', 'text-slate-300');
+            activeBtn.classList.add('bg-emerald-500/15', 'border-emerald-500', 'text-white');
+
+            const customBox = document.getElementById('custom-watts-box');
+            if (id === 'custom') {
+                customBox.classList.remove('hidden');
+                selectedPreset.baseWatts = parseFloat(document.getElementById('custom-watts-input').value) || 0;
+            } else {
+                customBox.classList.add('hidden');
+            }
+            tickSensorSimulation();
+        }
+
+        function updateCustomWatts(val) {
+            selectedPreset.baseWatts = Math.max(0, parseFloat(val) || 0);
+            tickSensorSimulation();
+        }
+
+        function togglePlugSimulation() {
+            isPluggedIn = !isPluggedIn;
+            updatePlugButtonUI();
+            tickSensorSimulation();
+        }
+
+        function updatePlugButtonUI() {
+            const btnText = document.getElementById('toggle-plug-text');
+            const statusPill = document.getElementById('sensor-status-pill');
+            const wattsDisplay = document.getElementById('live-watts-display');
+
+            if (isPluggedIn) {
+                btnText.textContent = "Simular Desenchufar";
+                statusPill.textContent = "Vampiro Activo";
+                statusPill.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30";
+                wattsDisplay.classList.remove('text-emerald-400');
+                wattsDisplay.classList.add('text-rose-400');
+            } else {
+                btnText.textContent = "Volver a Enchufar";
+                statusPill.textContent = "Desconectado (0W)";
+                statusPill.className = "text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+                wattsDisplay.classList.remove('text-rose-400');
+                wattsDisplay.classList.add('text-emerald-400');
+            }
+        }
+
+        // Simula fluctuación realista de sensor PZEM-004T cada 1.2 segundos
+        function tickSensorSimulation() {
+            const voltage = (220 + (Math.random() * 2.4 - 1.2)).toFixed(1);
+            document.getElementById('live-voltage').textContent = `${voltage} V`;
+
+            if (!isPluggedIn || selectedPreset.baseWatts === 0) {
+                currentLiveWatts = 0;
+                document.getElementById('live-watts-display').innerHTML = `0.0 <span class="text-xl font-sans font-semibold text-slate-400">W</span>`;
+                document.getElementById('live-amps').textContent = `0.000 A`;
+                document.getElementById('live-pf').textContent = `0.00`;
+            } else {
+                // Fluctuación realista de +-2%
+                const jitter = (Math.random() * 0.04 - 0.02) * selectedPreset.baseWatts;
+                currentLiveWatts = Math.max(0.1, selectedPreset.baseWatts + jitter);
+                const amps = (currentLiveWatts / (parseFloat(voltage) * selectedPreset.pf)).toFixed(3);
+
+                document.getElementById('live-watts-display').innerHTML = `${currentLiveWatts.toFixed(1)} <span class="text-xl font-sans font-semibold text-slate-400">W</span>`;
+                document.getElementById('live-amps').textContent = `${amps} A`;
+                document.getElementById('live-pf').textContent = selectedPreset.pf.toFixed(2);
+            }
+            updateLiveProjection();
+        }
+
+        function updateLiveProjection() {
+            const hours = parseInt(document.getElementById('live-hours-slider').value);
+            document.getElementById('live-hours-val').textContent = hours;
+            const projectedCost = calculateMonthlyCost(currentLiveWatts, hours);
+            document.getElementById('live-projected-clp').textContent = formatCLP(projectedCost);
+        }
+
+        function addCurrentLiveDevice() {
+            const hours = parseInt(document.getElementById('live-hours-slider').value);
+            const wattsToSave = isPluggedIn ? parseFloat(currentLiveWatts.toFixed(1)) : selectedPreset.baseWatts;
+            
+            let deviceName = selectedPreset.name;
+            if (selectedPreset.id === 'custom') {
+                deviceName = document.getElementById('custom-name-input').value.trim() || 'Dispositivo Medido';
+            }
+
+            devices.unshift({
+                id: Date.now(),
+                name: deviceName,
+                watts: wattsToSave,
+                hours: hours,
+                active: true,
+                icon: selectedPreset.icon
+            });
+
+            showToast(`"${deviceName}" agregado a Mi Depto`);
+            updateDashboard();
+            switchTab('inventory');
+        }
+
+        // ==================== VISTA 3: MI DEPTO (INVENTARIO) ====================
+        function renderInventory() {
+            const list = document.getElementById('inventory-list');
+            let savedMonthly = 0;
+
+            devices.forEach(d => {
+                if (!d.active) {
+                    savedMonthly += calculateMonthlyCost(d.watts, d.hours);
+                }
+            });
+
+            document.getElementById('inv-saved-monthly').textContent = formatCLP(savedMonthly);
+            document.getElementById('inv-saved-annual').textContent = formatCLP(savedMonthly * 12);
+
+            if (devices.length === 0) {
+                list.innerHTML = `
+                    <div class="text-center py-10 bg-slate-800/40 rounded-2xl border border-slate-800">
+                        <p class="text-xs text-slate-400">No tienes dispositivos registrados.</p>
+                        <button onclick="switchTab('live')" class="mt-3 text-xs font-semibold text-emerald-400 underline">Medir uno ahora</button>
+                    </div>
+                `;
+                return;
+            }
+
+            list.innerHTML = devices.map(dev => {
+                const monthlyCost = calculateMonthlyCost(dev.watts, dev.hours);
+                return `
+                <div class="rounded-2xl border p-4 transition-all ${dev.active ? 'bg-slate-800/70 border-slate-700/80' : 'bg-slate-900/60 border-slate-800/60 opacity-75'}">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl flex items-center justify-center ${dev.active ? 'bg-rose-500/15 text-rose-400' : 'bg-emerald-500/15 text-emerald-400'}">
+                                <i data-lucide="${dev.icon || 'plug'}" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-bold text-white leading-snug">${dev.name}</h3>
+                                <div class="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
+                                    <span class="font-mono text-slate-300">${dev.watts} W</span>
+                                    <span>•</span>
+                                    <span class="${dev.active ? 'text-rose-400 font-semibold' : 'text-emerald-400 line-through'}">
+                                        ${formatCLP(monthlyCost)}/mes
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Interruptor Toggle -->
+                        <div class="flex items-center gap-2">
+                            <button onclick="toggleDeviceActive(${dev.id})" class="w-12 h-6 rounded-full transition-colors p-1 flex items-center ${dev.active ? 'bg-rose-500 justify-end' : 'bg-slate-700 justify-start'}" title="Simular apagar">
+                                <span class="w-4 h-4 rounded-full bg-white shadow"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Control deslizante de horas -->
+                    <div class="mt-3.5 pt-3 border-t border-slate-700/50 flex items-center gap-3">
+                        <span class="text-[11px] text-slate-400 whitespace-nowrap">Espera: <strong class="text-slate-200">${dev.hours}h/día</strong></span>
+                        <input type="range" min="0" max="24" value="${dev.hours}" 
+                            oninput="updateDeviceHours(${dev.id}, this.value)" class="flex-1">
+                        <button onclick="deleteDevice(${dev.id})" class="text-slate-500 hover:text-rose-400 p-1 transition" title="Eliminar">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        }
+
+        function toggleDeviceActive(id) {
+            const dev = devices.find(d => d.id === id);
+            if (dev) {
+                dev.active = !dev.active;
+                renderInventory();
+                updateDashboard();
+                if (!dev.active) {
+                    showToast(`Ahorras ${formatCLP(calculateMonthlyCost(dev.watts, dev.hours))}/mes`);
+                }
+            }
+        }
+
+        function updateDeviceHours(id, newHours) {
+            const dev = devices.find(d => d.id === id);
+            if (dev) {
+                dev.hours = parseInt(newHours);
+                renderInventory();
+                updateDashboard();
+            }
+        }
+
+        function deleteDevice(id) {
+            devices = devices.filter(d => d.id !== id);
+            renderInventory();
+            updateDashboard();
+            showToast("Dispositivo eliminado");
+        }
+
+        // ==================== VISTA 4: GRÁFICO VALIDACIÓN ====================
+        function renderValidationChart() {
+            const ctx = document.getElementById('validationChart').getContext('2d');
+            if (validationChartInstance) {
+                validationChartInstance.destroy();
+            }
+
+            validationChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Router', 'Carg. PC', 'Consola', 'Smart TV', 'Carg. Cel'],
+                    datasets: [
+                        {
+                            label: 'Prototipo ESP32 (W)',
+                            data: [11.2, 3.4, 9.8, 5.1, 0.6],
+                            backgroundColor: '#10b981',
+                            borderRadius: 6
+                        },
+                        {
+                            label: 'Kill A Watt Ref (W)',
+                            data: [11.0, 3.5, 9.7, 5.0, 0.6],
+                            backgroundColor: '#38bdf8',
+                            borderRadius: 6
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#94a3b8', font: { size: 10 } }
+                        },
+                        y: {
+                            grid: { color: '#1e293b' },
+                            ticks: { color: '#94a3b8', font: { size: 10 } }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#cbd5e1', font: { size: 11 }, boxWidth: 12 }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ==================== MODAL TARIFA Y UTILIDADES ====================
+        function openTariffModal() {
+            document.getElementById('tariff-input').value = tariffCLP;
+            document.getElementById('tariff-modal').classList.remove('hidden');
+        }
+
+        function closeTariffModal() {
+            document.getElementById('tariff-modal').classList.add('hidden');
+        }
+
+        function setQuickTariff(val) {
+            document.getElementById('tariff-input').value = val;
+        }
+
+        function saveTariff() {
+            const val = parseFloat(document.getElementById('tariff-input').value);
+            if (val && val > 0) {
+                tariffCLP = val;
+                document.getElementById('header-tariff').textContent = `$${tariffCLP}/kWh`;
+                updateDashboard();
+                renderInventory();
+                updateLiveProjection();
+                closeTariffModal();
+                showToast(`Tarifa actualizada a $${tariffCLP} CLP/kWh`);
+            }
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-msg').textContent = msg;
+            toast.classList.remove('opacity-0', 'translate-y-[-10px]');
+            toast.classList.add('opacity-100', 'translate-y-0');
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', 'translate-y-[-10px]');
+            }, 2500);
+        }
+
+        // ==================== INICIALIZACIÓN ====================
+        window.onload = function() {
+            lucide.createIcons();
+            initPresetButtons();
+            updateDashboard();
+            tickSensorSimulation();
+            // Loop de telemetría en vivo cada 1.2 segundos
+            setInterval(tickSensorSimulation, 1200);
+        };
+    </script>
+</body>
+</html>
